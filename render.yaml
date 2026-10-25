@@ -1,0 +1,27 @@
+# Render Blueprint for the DeskSpot API.
+# The React app is deployed separately on Vercel (see README).
+
+services:
+  - type: web
+    name: deskspot-api
+    runtime: node
+    region: frankfurt
+    rootDir: backend
+    buildCommand: npm ci && npx prisma generate
+    startCommand: npx prisma migrate deploy && node prisma/seed.js && node src/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: "0.0.0.0"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false

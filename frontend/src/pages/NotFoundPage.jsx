@@ -2,10 +2,12 @@
 
 export default function NotFoundPage() {
   return (
-    <div className="card card--narrow">
-      <h1>Page not found</h1>
-      <p>The page you are looking for does not exist.</p>
-      <Link to="/login">Go to login</Link>
+    <div className="center-screen">
+      <div>
+        <h1>Page not found</h1>
+        <p className="muted">The page you are looking for does not exist.</p>
+        <Link to="/login" className="btn btn--primary">Go to DeskSpot</Link>
+      </div>
     </div>
   );
 }

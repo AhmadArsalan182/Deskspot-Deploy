@@ -1,0 +1,51 @@
+# DeskSpot — whole stack in one command:  docker compose up --build
+#
+#   web  (React + nginx)  http://localhost:8080
+#   api  (Express)        http://localhost:4000/api/docs
+#   db   (PostgreSQL 16)  localhost:5432
+#
+# The API container applies migrations and seeds demo data on startup, so a
+# clean checkout is usable as soon as the containers are healthy.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: deskspot
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d deskspot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/deskspot?schema=public
+      # Override with your own value for anything beyond a local demo.
+      JWT_SECRET: ${JWT_SECRET:-local-compose-secret-change-me-please-32chars}
+      JWT_EXPIRES_IN: 8h
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:8080}
+    ports:
+      - "4000:4000"
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  db-data:

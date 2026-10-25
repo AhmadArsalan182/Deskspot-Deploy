@@ -23,3 +23,13 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 .vscode/
+# Local environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local secrets and certificates
+*.pem
+*.key
+secrets/

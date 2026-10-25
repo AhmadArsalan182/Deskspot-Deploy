@@ -1,9 +1,21 @@
-﻿import "dotenv/config";
 import { createApp } from "./app.js";
+import { config } from "./config.js";
+import prisma from "./lib/prisma.js";
 
-const port = Number(process.env.PORT) || 4000;
-const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
+const app = createApp();
 
-createApp({ frontendOrigin }).listen(port, () => {
-  console.log(`DeskSpot API listening on port ${port}`);
+const server = app.listen(config.port, config.host, () => {
+  console.log(`DeskSpot API listening on http://${config.host}:${config.port} (${config.nodeEnv})`);
+  console.log(`API docs: http://localhost:${config.port}/api/docs`);
 });
+
+async function shutdown(signal) {
+  console.log(`\n${signal} received, shutting down...`);
+  server.close(async () => {
+    await prisma.$disconnect();
+    process.exit(0);
+  });
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
