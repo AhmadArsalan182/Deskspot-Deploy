@@ -44,7 +44,7 @@ export function BarChart({ data, ariaLabel, formatValue = number, showValues = f
 }
 
 /** Area + line chart over an evenly spaced series. */
-export function LineChart({ data, ariaLabel, formatValue = number, height = 180, color = "#4f46e5" }) {
+export function LineChart({ data, ariaLabel, formatValue = number, height = 180, color = "#1f6b45" }) {
   const width = 600;
   const pad = 10;
   const max = Math.max(1, ...data.map((item) => item.value));

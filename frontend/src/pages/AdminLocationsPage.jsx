@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Armchair, Building2, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import Alert from "../components/Alert.jsx";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import FormField from "../components/FormField.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -34,6 +35,7 @@ export default function AdminLocationsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [dialog, setDialog] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -106,8 +108,7 @@ export default function AdminLocationsPage() {
     setShowForm(true);
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function persistForm() {
     setSaving(true);
     setMessage(null);
     try {
@@ -137,35 +138,84 @@ export default function AdminLocationsPage() {
     }
   }
 
-  async function handleDeleteOffice(office) {
-    if (!window.confirm(`Delete ${office.name}? Offices with spaces cannot be deleted.`)) return;
-    setMessage(null);
-    try {
-      await deleteOffice(office.id);
-      setMessage({ type: "success", text: "Office deleted." });
-      setReloadToken((token) => token + 1);
-    } catch (err) {
-      setMessage({ type: "error", text: err.message });
+  function handleSubmit(event) {
+    event.preventDefault();
+    const editingOffice = form.mode === "OFFICE";
+    if (form.editingId) {
+      setDialog({
+        kind: "save",
+        title: editingOffice ? "Save office changes" : "Save space changes",
+        message: editingOffice
+          ? `Update office "${form.name}"? This changes how bookings and availability are shown for that location.`
+          : `Update space "${form.name}"? Capacity and type changes can affect future bookings.`,
+        confirmLabel: "Save changes",
+        danger: false,
+      });
+      return;
     }
+    persistForm();
   }
 
-  async function handleDeleteSpace(space) {
-    if (!window.confirm(`Delete ${space.name}? Spaces with bookings cannot be deleted.`)) return;
-    setMessage(null);
-    try {
-      await deleteSpace(space.id);
-      setMessage({ type: "success", text: "Space deleted." });
-      setReloadToken((token) => token + 1);
-    } catch (err) {
-      setMessage({ type: "error", text: err.message });
-    }
+  function handleDeleteOffice(office) {
+    setDialog({
+      kind: "delete-office",
+      target: office,
+      title: "Delete office",
+      message: `Delete "${office.name}"? This cannot be undone. Offices that still have spaces cannot be deleted.`,
+      confirmLabel: "Delete office",
+      danger: true,
+    });
   }
 
-  async function handleToggleActive(space) {
+  function handleDeleteSpace(space) {
+    setDialog({
+      kind: "delete-space",
+      target: space,
+      title: "Delete space",
+      message: `Delete "${space.name}"? This cannot be undone. Spaces with booking history cannot be deleted.`,
+      confirmLabel: "Delete space",
+      danger: true,
+    });
+  }
+
+  function handleToggleActive(space) {
+    setDialog({
+      kind: "toggle-space",
+      target: space,
+      title: space.isActive ? "Deactivate space" : "Activate space",
+      message: space.isActive
+        ? `Deactivate "${space.name}"? It will keep its history but cannot be booked until reactivated.`
+        : `Activate "${space.name}" so employees can book it again?`,
+      confirmLabel: space.isActive ? "Deactivate" : "Activate",
+      danger: space.isActive,
+    });
+  }
+
+  async function confirmDialog() {
+    const current = dialog;
+    setDialog(null);
+    if (!current) return;
+
+    if (current.kind === "save") {
+      await persistForm();
+      return;
+    }
+
     setMessage(null);
     try {
-      await updateSpace(space.id, { isActive: !space.isActive });
-      setMessage({ type: "success", text: space.isActive ? "Space deactivated." : "Space activated." });
+      if (current.kind === "delete-office") {
+        await deleteOffice(current.target.id);
+        setMessage({ type: "success", text: "Office deleted." });
+      } else if (current.kind === "delete-space") {
+        await deleteSpace(current.target.id);
+        setMessage({ type: "success", text: "Space deleted." });
+      } else if (current.kind === "toggle-space") {
+        await updateSpace(current.target.id, { isActive: !current.target.isActive });
+        setMessage({
+          type: "success",
+          text: current.target.isActive ? "Space deactivated." : "Space activated.",
+        });
+      }
       setReloadToken((token) => token + 1);
     } catch (err) {
       setMessage({ type: "error", text: err.message });
@@ -363,7 +413,7 @@ export default function AdminLocationsPage() {
 
             {officeSpaces.length === 0 ? (
               <p className="muted" style={{ margin: 0 }}>
-                No spaces here yet — use “Add space” above to create the first one.
+                No spaces here yet. Use “Add space” above to create the first one.
               </p>
             ) : (
               <div className="table-wrap">
@@ -424,6 +474,16 @@ export default function AdminLocationsPage() {
           </section>
         ))
       )}
+
+      <ConfirmDialog
+        open={Boolean(dialog)}
+        title={dialog?.title ?? ""}
+        message={dialog?.message ?? ""}
+        confirmLabel={dialog?.confirmLabel ?? "Confirm"}
+        danger={Boolean(dialog?.danger)}
+        onCancel={() => setDialog(null)}
+        onConfirm={confirmDialog}
+      />
     </div>
   );
 }

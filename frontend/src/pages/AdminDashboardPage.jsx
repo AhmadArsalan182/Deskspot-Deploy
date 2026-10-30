@@ -7,7 +7,6 @@ import {
   Gauge,
   MapPin,
   Percent,
-  Sparkles,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -21,9 +20,9 @@ import { getOverview } from "../services/admin.js";
 import { formatDayKey } from "../utils/date.js";
 
 const WINDOWS = [7, 14, 30];
-const DESK_COLOR = "#4f46e5";
-const ROOM_COLOR = "#0ea5e9";
-const OFFICE_COLORS = ["#4f46e5", "#0ea5e9", "#f59e0b", "#10b981", "#a855f7", "#ef4444"];
+const DESK_COLOR = "#1f6b45";
+const ROOM_COLOR = "#3f7a5c";
+const OFFICE_COLORS = ["#1f6b45", "#3f7a5c", "#b45309", "#0f766e", "#4b6b58", "#b91c1c"];
 
 /** "2026-05-02" → "2 May", for a compact chart axis. */
 function shortDay(key) {
@@ -115,7 +114,7 @@ export default function AdminDashboardPage() {
         </EmptyState>
       ) : (
         <>
-          <div className="grid grid--4">
+          <div className="metrics-panel">
             <Metric
               icon={MapPin}
               label="Offices"
@@ -245,7 +244,7 @@ export default function AdminDashboardPage() {
             <section className="card">
               <div className="card__head">
                 <h2>
-                  <Sparkles size={18} aria-hidden="true" /> Busiest spaces
+                  <ChartColumn size={18} aria-hidden="true" /> Busiest spaces
                 </h2>
               </div>
               {data.busiestSpaces.length === 0 ? (

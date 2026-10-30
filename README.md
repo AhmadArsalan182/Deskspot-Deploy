@@ -203,7 +203,7 @@ API refuses to start without one when `NODE_ENV=production`.
 | `TEST_DATABASE_URL` | — | Optional; keeps integration tests off dev data |
 | `JWT_SECRET` | dev-only value | Signing key; **must** be set in production |
 | `JWT_EXPIRES_IN` | `8h` | Session lifetime |
-| `FRONTEND_ORIGIN` | `http://localhost:5173` | The single origin allowed by CORS |
+| `FRONTEND_ORIGIN` | `http://localhost:5173` | Allowed CORS origin(s); comma-separate for Vercel + localhost |
 | `ADMIN_INVITE_CODE` | `DESKSPOT-ADMIN` | Shared code required to register an administrator |
 | `EXPOSE_RESET_TOKEN` | dev-only `true` | Returns the password-reset token in the response when no mail transport exists |
 
@@ -400,13 +400,11 @@ Where the brief was silent I made a call and wrote it down here.
 1. **In-app notifications instead of email (F8).** The brief allows a mocked
    sender; persisted, unread-counted notifications are the same requirement
    without an external provider, and they are visible in a review.
-2. **F10 (recurring bookings) and F11 (real-time availability) are not
-   implemented.** They are the two stretch items, and the brief says they only
-   count once the Musts are solid. Availability re-runs on filter change instead
-   of pushing updates. One piece of "real time" *is* handled: the booking form
-   hides any slot already elapsed on the selected day, so a 2 PM booking cannot
-   offer 09:00 — and the server independently rejects past starts
-   (`400 IN_THE_PAST`) rather than trusting the client.
+2. **F10 (recurring) and F11 (SSE availability) are implemented.** Recurring
+   bookings report per-date outcomes; availability streams are in-process SSE
+   (fine for a single Render instance). The booking form still hides elapsed
+   slots for the selected day, and the server rejects past starts
+   (`400 IN_THE_PAST`).
 3. **The admin analytics window looks forward, not back.** Bookings can only be
    created for the future (`IN_THE_PAST`), so a retrospective window would always
    be empty. `/api/admin/overview` and `/api/admin/statistics` therefore describe
@@ -469,6 +467,9 @@ Where the brief was silent I made a call and wrote it down here.
 ---
 
 ## Deployment (free: Neon + Render + Vercel)
+
+Click-by-click production guide with copy-paste env values:
+[`docs/deploy-render.md`](docs/deploy-render.md).
 
 Vercel hosts the React app. It cannot host PostgreSQL or a long-running Express
 process, so the free split that matches the brief is:
@@ -567,7 +568,12 @@ If login fails, wait for Render to finish the restart, then hard-refresh the
 Vercel tab (Ctrl+F5). `VITE_API_URL` is baked in at **build** time — if you
 change it later, trigger **Redeploy** on Vercel.
 
-**Live URL:** _paste the Vercel URL here after the first deploy_
+**Live URL:** https://deskspot-deploy.vercel.app/
+
+> **Deploy note:** Vercel must set `VITE_API_URL` to the Render API origin (no
+> trailing slash) and **redeploy**. Backend secrets (`JWT_SECRET`,
+> `DATABASE_URL`, `FRONTEND_ORIGIN`) belong on **Render**, not Vercel. Set
+> Render `FRONTEND_ORIGIN=https://deskspot-deploy.vercel.app`.
 
 - CI: `.github/workflows/ci.yml` runs lint, migrations, seed, tests and both image
   builds on every push and pull request (see *Continuous integration*).
@@ -627,26 +633,13 @@ docs/adr/            architecture decision records
 
 ## What I would do next
 
-1. **Recurring bookings (F10)** — a `POST /api/bookings/recurring` that expands
-   a pattern into candidate dates and reports per-date outcomes, so partial
-   conflicts come back as a list of successes and failures rather than one
-   all-or-nothing error.
-2. **Real-time availability (F11)** — Server-Sent Events on
-   `/api/availability/stream` keyed by office and date, publishing on booking and
-   cancellation. SSE is enough for a read-only push and needs no extra
-   infrastructure.
-3. **Email delivery behind the notification service** — the notifications table
-   is already the right seam: add a delivery channel and keep the in-app record.
-4. **An end-to-end test** of the booking flow with Playwright, wired into CI
-   alongside the coverage artefact.
-5. **Structured logging with request ids** and a `/api/metrics` endpoint, so
-   production issues are debuggable without a shell on the box.
-6. **A 15-minute buffer between bookings in a room** — the change request from the
-   review brief. It belongs in `collectBookingViolations` as a rule on adjacent
-   bookings, plus a widened overlap check in the service; the exclusion
-   constraint would need a stored `tsrange` with an `upper` offset, which is why
-   it is a deliberate change rather than a config toggle.
-7. **Refresh-token rotation** and a shorter access-token lifetime.
-8. **A polished desk-map view** for the admin occupancy screen — the brief asks
-   for desks and rooms to be visible on the dashboard, and the current version
-   shows them as a list per space.
+1. **Email delivery** behind the notification / password-reset seam (Resend or
+   SMTP). Keep in-app `Notification` rows; stop using `EXPOSE_RESET_TOKEN` in prod.
+2. **Playwright E2E** of portal → book → cancel, wired into CI.
+3. **Redis-backed availability hub** so SSE fans out across multiple API
+   instances.
+4. **Refresh-token rotation** and a shorter access-token lifetime.
+5. **A spatial desk-map** for admin occupancy (beyond the current floor tiles).
+6. **DB-level room buffer** via a stored buffered `tsrange` if multi-writer races
+   on the 15-minute gap become a concern (application locks already cover the
+   common case).

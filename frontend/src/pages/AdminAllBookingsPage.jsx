@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ClipboardList } from "lucide-react";
 import Alert from "../components/Alert.jsx";
 import BookingStatusBadge from "../components/BookingStatusBadge.jsx";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SpaceTypeBadge from "../components/SpaceTypeBadge.jsx";
@@ -21,6 +22,7 @@ export default function AdminAllBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [pendingCancel, setPendingCancel] = useState(null);
 
   const { officeId, date, status } = filters;
 
@@ -63,11 +65,14 @@ export default function AdminAllBookingsPage() {
     setFilters((current) => ({ ...current, ...patch }));
   }
 
-  async function handleCancel(booking) {
-    const reason = window.prompt(
-      `Reason for cancelling ${booking.user.fullName}'s booking for ${booking.space.name}? (required)`,
-    );
-    if (reason === null) return;
+  function requestCancel(booking) {
+    setPendingCancel(booking);
+  }
+
+  async function confirmCancel(reason) {
+    const booking = pendingCancel;
+    if (!booking) return;
+    setPendingCancel(null);
     setMessage(null);
     try {
       await cancelBooking(booking.id, reason);
@@ -181,11 +186,11 @@ export default function AdminAllBookingsPage() {
                     </td>
                     <td className="is-right">
                       {canCancel(booking) ? (
-                        <button type="button" className="btn btn--danger btn--sm" onClick={() => handleCancel(booking)}>
+                        <button type="button" className="btn btn--danger btn--sm" onClick={() => requestCancel(booking)}>
                           Cancel
                         </button>
                       ) : (
-                        <span className="cell-muted">—</span>
+                        <span className="cell-muted">-</span>
                       )}
                     </td>
                   </tr>
@@ -218,6 +223,24 @@ export default function AdminAllBookingsPage() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingCancel)}
+        title="Cancel booking"
+        message={
+          pendingCancel
+            ? `Cancel ${pendingCancel.user.fullName}'s booking for ${pendingCancel.space.name}? The employee will be notified with your reason.`
+            : ""
+        }
+        confirmLabel="Cancel booking"
+        cancelLabel="Keep booking"
+        danger
+        requireReason
+        reasonLabel="Cancellation reason"
+        reasonPlaceholder="Explain why this booking is being cancelled"
+        onCancel={() => setPendingCancel(null)}
+        onConfirm={confirmCancel}
+      />
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { formatDayKey } from "../utils/date.js";
 
 const WINDOWS = [7, 14, 30];
 const TABLE_ROWS = 7;
-const OFFICE_COLORS = ["#4f46e5", "#0ea5e9", "#f59e0b", "#10b981", "#a855f7", "#ef4444"];
+const OFFICE_COLORS = ["#1f6b45", "#3f7a5c", "#b45309", "#0f766e", "#4b6b58", "#b91c1c"];
 
 function Metric({ icon: Icon, label, value, hint }) {
   return (
@@ -113,7 +113,7 @@ export default function AdminStatisticsPage() {
         </EmptyState>
       ) : (
         <>
-          <div className="grid grid--4">
+          <div className="metrics-panel">
             <Metric
               icon={Gauge}
               label={`Occupancy · ${report.days}d`}
@@ -211,7 +211,7 @@ export default function AdminStatisticsPage() {
                     <div className="stat">
                       <div className="stat__label">Peak day</div>
                       <div className="stat__value" style={{ fontSize: "1.05rem" }}>
-                        {peak.date ? formatDayKey(peak.date) : "—"}
+                        {peak.date ? formatDayKey(peak.date) : "-"}
                       </div>
                       <div className="stat__hint">{peak.bookedSlots} slots booked</div>
                     </div>

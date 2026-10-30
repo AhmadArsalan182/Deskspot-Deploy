@@ -22,8 +22,8 @@ so `git log --grep F4` reconstructs the history for one story.
 | F7 | Should | Responsive, accessible UI | Done |
 | F8 | Should | Booking confirmation and cancellation notice | Done |
 | F9 | Stretch | Admin usage statistics | Done |
-| F10 | Stretch | Recurring booking | Not started |
-| F11 | Stretch | Real-time availability | Not started |
+| F10 | Stretch | Recurring booking | Done |
+| F11 | Stretch | Real-time availability | Done |
 
 ## Notes per story
 
@@ -73,8 +73,13 @@ version of the same requirement and needs no mail provider to demo.
 occupancy percentage per office, plus a per-day breakdown of bookings and booked
 slots against total capacity.
 
-**F10 — Recurring bookings.** Not implemented. See "What I would do next" in the
-[README](../README.md).
+**F10 — Recurring bookings.** `POST /api/bookings/recurring` expands weekdays
+into office-local dates (capped by the 14-day horizon) and creates each
+occurrence through the normal booking path. The response lists per-date
+successes and failures so partial conflicts are visible. The Find a space
+screen offers a Repeat toggle with weekday chips.
 
-**F11 — Real-time availability.** Not implemented. Availability refreshes on
-demand (changing a filter re-runs the search) rather than pushing updates.
+**F11 — Real-time availability.** `GET /api/availability/stream` is an SSE
+channel keyed by office and date. Successful creates/cancels publish an
+`availability.changed` event; SearchPage listens and re-runs the search.
+In-process only (single API instance).

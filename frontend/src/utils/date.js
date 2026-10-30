@@ -57,7 +57,7 @@ export function durationLabel(from, to) {
   const [fromHour, fromMinute] = from.split(":").map(Number);
   const [toHour, toMinute] = to.split(":").map(Number);
   const total = toHour * 60 + toMinute - (fromHour * 60 + fromMinute);
-  if (total <= 0) return "—";
+  if (total <= 0) return "-";
   const hours = Math.floor(total / 60);
   const minutes = total % 60;
   return [hours ? `${hours} h` : null, minutes ? `${minutes} m` : null].filter(Boolean).join(" ");

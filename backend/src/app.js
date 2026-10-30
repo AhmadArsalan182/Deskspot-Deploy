@@ -24,24 +24,61 @@ function limiterBody(code, message) {
   return { error: { code, message } };
 }
 
-export function createApp({ frontendOrigin = config.frontendOrigin } = {}) {
+export function createApp(options = {}) {
   const app = express();
   // Rate limiting is disabled under test so a suite that deliberately hammers
   // the credential endpoints is not throttled by its own abuse protection.
   const isTest = config.nodeEnv === "test";
+  // Explicit overrides win; otherwise use the parsed FRONTEND_ORIGIN allowlist.
+  const allowedOrigins = Array.isArray(options.frontendOrigins)
+    ? options.frontendOrigins
+    : options.frontendOrigin != null
+      ? [String(options.frontendOrigin).replace(/\/$/, "")].filter(Boolean)
+      : config.frontendOrigins;
 
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
-  app.use(helmet());
+  app.use(helmet({
+    // SSE streams need to stay open; default CORP is fine for our API.
+  }));
   app.use(
     cors({
-      origin: frontendOrigin,
+      origin(origin, callback) {
+        // Non-browser clients (curl, health checks, same-origin) send no Origin.
+        if (!origin) return callback(null, true);
+        const normalized = origin.replace(/\/$/, "");
+        if (allowedOrigins.includes(normalized)) return callback(null, true);
+        return callback(null, false);
+      },
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     }),
   );
   app.use(express.json({ limit: "100kb" }));
   app.use(cookieParser());
+
+  // Lightweight structured request log (method, path, status, duration, request id).
+  app.use((req, res, next) => {
+    const requestId = req.headers["x-request-id"] || crypto.randomUUID();
+    req.requestId = requestId;
+    res.setHeader("X-Request-Id", requestId);
+    const started = Date.now();
+    res.on("finish", () => {
+      if (req.path === "/api/health") return;
+      console.log(
+        JSON.stringify({
+          level: "info",
+          msg: "request",
+          requestId,
+          method: req.method,
+          path: req.originalUrl?.split("?")[0] ?? req.path,
+          status: res.statusCode,
+          durationMs: Date.now() - started,
+        }),
+      );
+    });
+    next();
+  });
 
   // Broad safety net so no single client can hammer the API. Health checks are
   // exempt so container/pipeline probes never trip it.
@@ -117,9 +154,11 @@ export function createApp({ frontendOrigin = config.frontendOrigin } = {}) {
 
   // --- Availability ---------------------------------------------------------
   app.get("/api/availability", authenticate, availabilityController.searchAvailability);
+  app.get("/api/availability/stream", authenticate, availabilityController.streamAvailability);
 
   // --- Bookings -------------------------------------------------------------
   app.get("/api/bookings/me", authenticate, bookingController.listMyBookingsHandler);
+  app.post("/api/bookings/recurring", authenticate, bookingController.createRecurringBooking);
   app.post("/api/bookings", authenticate, bookingController.createBooking);
   app.get("/api/bookings", authenticate, authorize(ADMIN), bookingController.listAllBookings);
   app.post("/api/bookings/:id/cancel", authenticate, bookingController.cancelBooking);

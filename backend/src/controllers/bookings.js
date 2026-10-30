@@ -3,6 +3,7 @@ import { badRequest, notFound } from "../lib/errors.js";
 import {
   cancelBooking as cancelBookingService,
   createBooking as createBookingService,
+  createRecurringBookings as createRecurringBookingsService,
   listBookingsForAdmin,
   listMyBookings,
 } from "../services/bookingService.js";
@@ -12,6 +13,7 @@ import {
   bookingCreateSchema,
   cancelBookingSchema,
   myBookingsQuerySchema,
+  recurringBookingSchema,
 } from "../validation/schemas.js";
 
 /** Accept either absolute instants or an office-local date + from/to pair. */
@@ -47,6 +49,22 @@ export async function createBooking(req, res) {
   });
 
   res.status(201).json(booking);
+}
+
+export async function createRecurringBooking(req, res) {
+  const input = recurringBookingSchema.parse(req.body);
+  const result = await createRecurringBookingsService({
+    actor: req.user,
+    spaceId: input.spaceId,
+    from: input.from,
+    to: input.to,
+    attendees: input.attendees,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    count: input.count,
+    weekdays: input.weekdays,
+  });
+  res.status(200).json(result);
 }
 
 export async function listMyBookingsHandler(req, res) {

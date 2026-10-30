@@ -91,6 +91,28 @@ export const bookingCreateSchema = z
     message: "Provide either startUtc and endUtc, or date with from and to.",
   });
 
+/** Recurring series: office-local date + from/to, weekdays 1=Mon … 7=Sun. */
+export const recurringBookingSchema = z
+  .object({
+    spaceId: z.string().min(1, "spaceId is required."),
+    attendees: z.number().int().min(1).max(500).default(1),
+    from: clockTime,
+    to: clockTime,
+    startDate: dayKey,
+    endDate: dayKey.optional(),
+    count: z.number().int().min(1).max(14).optional(),
+    weekdays: z.array(z.number().int().min(1).max(7)).nonempty("Pick at least one weekday."),
+  })
+  .refine((value) => value.endDate || value.count, {
+    message: "Provide endDate or count for the series.",
+  })
+  .refine((value) => !value.endDate || value.endDate >= value.startDate, {
+    message: "endDate must be on or after startDate.",
+  })
+  .refine((value) => value.to > value.from, {
+    message: "The end time must be after the start time.",
+  });
+
 export const cancelBookingSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });

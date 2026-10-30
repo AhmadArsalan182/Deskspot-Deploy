@@ -280,6 +280,18 @@ export const openApiDocument = {
       put: { tags: ["Spaces"], summary: "Update a space (admin)", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Updated." }, 403: errorResponse("Admin only.") } },
       delete: { tags: ["Spaces"], summary: "Delete an unbooked space (admin)", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 204: { description: "Deleted." }, 409: errorResponse("Space has bookings; deactivate instead.") } },
     },
+    "/availability/stream": {
+      get: {
+        tags: ["Availability"],
+        summary: "SSE stream of availability changes for an office and date",
+        security: [{ cookieAuth: [] }, { bearerAuth: [] }],
+        parameters: [
+          { name: "officeId", in: "query", required: true, schema: { type: "string" } },
+          { name: "date", in: "query", required: true, schema: { type: "string", format: "date" } },
+        ],
+        responses: { 200: { description: "text/event-stream (use Authorization Bearer)" } },
+      },
+    },
     "/availability": {
       get: {
         tags: ["Availability"],
@@ -292,6 +304,39 @@ export const openApiDocument = {
           { name: "type", in: "query", schema: { type: "string", enum: ["DESK", "ROOM"] } },
         ],
         responses: { 200: { description: "Spaces with an `available` flag and the day's busy intervals." }, 400: errorResponse("Validation error.") },
+      },
+    },
+    "/bookings/recurring": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Create a recurring series (partial success per date)",
+        security: [{ cookieAuth: [] }, { bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["spaceId", "from", "to", "startDate", "weekdays"],
+                properties: {
+                  spaceId: { type: "string" },
+                  from: { type: "string", example: "09:00" },
+                  to: { type: "string", example: "10:00" },
+                  startDate: { type: "string", format: "date" },
+                  endDate: { type: "string", format: "date" },
+                  count: { type: "integer", minimum: 1, maximum: 14 },
+                  weekdays: {
+                    type: "array",
+                    items: { type: "integer", minimum: 1, maximum: 7 },
+                    description: "ISO weekdays: 1=Mon … 7=Sun",
+                  },
+                  attendees: { type: "integer", minimum: 1 },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "Per-date results" } },
       },
     },
     "/bookings": {

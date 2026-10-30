@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarCheck, CircleSlash, Clock, Search, Users } from "lucide-react";
+import { CalendarCheck, CircleSlash, Clock, Repeat, Search, Users } from "lucide-react";
 import Alert from "../components/Alert.jsx";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SpaceTypeBadge from "../components/SpaceTypeBadge.jsx";
-import { createBooking } from "../services/bookings.js";
-import { searchAvailability } from "../services/availability.js";
+import { createBooking, createRecurringBooking } from "../services/bookings.js";
+import { openAvailabilityStream, searchAvailability } from "../services/availability.js";
 import { getOffices } from "../services/offices.js";
 import {
   END_TIMES,
@@ -29,6 +30,16 @@ const INITIAL_FILTERS = {
   attendees: 1,
 };
 
+const WEEKDAYS = [
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+  { value: 7, label: "Sun" },
+];
+
 export default function SearchPage() {
   const [offices, setOffices] = useState([]);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
@@ -36,6 +47,10 @@ export default function SearchPage() {
   const [bookingId, setBookingId] = useState(null);
   const [message, setMessage] = useState(null);
   const [searchToken, setSearchToken] = useState(0);
+  const [repeat, setRepeat] = useState(false);
+  const [weekdays, setWeekdays] = useState([1, 2, 3, 4, 5]);
+  const [repeatEnd, setRepeatEnd] = useState(() => addDays(todayKey(), 14));
+  const [pendingSeries, setPendingSeries] = useState(null);
 
   const { officeId, date, from, to, type, attendees } = filters;
 
@@ -103,11 +118,35 @@ export default function SearchPage() {
     };
   }, [officeId, date, windowFrom, windowTo, type, rangeInvalid, noSlotsLeft, searchToken]);
 
+  useEffect(() => {
+    if (!officeId || !date) return undefined;
+    return openAvailabilityStream({
+      officeId,
+      date,
+      onChange: () => setSearchToken((token) => token + 1),
+    });
+  }, [officeId, date]);
+
   function update(patch) {
     setFilters((current) => ({ ...current, ...patch }));
   }
 
+  function toggleWeekday(value) {
+    setWeekdays((current) =>
+      current.includes(value) ? current.filter((day) => day !== value) : [...current, value].sort(),
+    );
+  }
+
   async function handleBook(space) {
+    if (repeat) {
+      if (weekdays.length === 0) {
+        setMessage({ type: "error", text: "Pick at least one weekday for the recurring series." });
+        return;
+      }
+      setPendingSeries(space);
+      return;
+    }
+
     setBookingId(space.id);
     setMessage(null);
     try {
@@ -121,6 +160,38 @@ export default function SearchPage() {
       setMessage({
         type: "success",
         text: `Booked ${space.name} for ${formatDayKey(booking.date)} at ${booking.localStartTime}.`,
+      });
+      setSearchToken((token) => token + 1);
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setBookingId(null);
+    }
+  }
+
+  async function confirmSeries() {
+    const space = pendingSeries;
+    if (!space) return;
+    setPendingSeries(null);
+    setBookingId(space.id);
+    setMessage(null);
+    try {
+      const series = await createRecurringBooking({
+        spaceId: space.id,
+        startDate: date,
+        endDate: repeatEnd,
+        from: windowFrom,
+        to: windowTo,
+        attendees: Number(attendees),
+        weekdays,
+      });
+      const failures = series.results.filter((row) => !row.ok);
+      setMessage({
+        type: failures.length ? "warning" : "success",
+        text:
+          failures.length === 0
+            ? `Booked ${space.name} on ${series.created} day${series.created === 1 ? "" : "s"}.`
+            : `Created ${series.created} of ${series.requested} bookings. ${failures.length} day${failures.length === 1 ? "" : "s"} failed (e.g. ${failures[0].error?.message ?? "conflict"}).`,
       });
       setSearchToken((token) => token + 1);
     } catch (err) {
@@ -246,6 +317,45 @@ export default function SearchPage() {
           </button>
         </div>
 
+        <div className="toolbar" style={{ marginTop: 12 }}>
+          <label className="chip" style={{ cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={repeat}
+              onChange={(event) => setRepeat(event.target.checked)}
+              style={{ marginRight: 8 }}
+            />
+            <Repeat size={14} aria-hidden="true" /> Repeat this booking
+          </label>
+          {repeat && (
+            <>
+              <div className="chip-row" style={{ marginTop: 0 }} role="group" aria-label="Weekdays">
+                {WEEKDAYS.map((day) => (
+                  <button
+                    key={day.value}
+                    type="button"
+                    className={weekdays.includes(day.value) ? "chip chip--active" : "chip"}
+                    onClick={() => toggleWeekday(day.value)}
+                  >
+                    {day.label}
+                  </button>
+                ))}
+              </div>
+              <div className="field field--inline" style={{ flex: "0 1 180px" }}>
+                <label htmlFor="repeat-end">Until</label>
+                <input
+                  id="repeat-end"
+                  type="date"
+                  min={date}
+                  max={addDays(officeToday, 14)}
+                  value={repeatEnd}
+                  onChange={(event) => setRepeatEnd(event.target.value)}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
         {date === officeToday && !noSlotsLeft && (
           <p className="field__hint" style={{ marginTop: 12 }}>
             <Clock size={13} aria-hidden="true" /> It is {String(Math.floor(minStartMinutes / 60)).padStart(2, "0")}
@@ -255,7 +365,7 @@ export default function SearchPage() {
         )}
         {noSlotsLeft && (
           <Alert type="warning">
-            No bookable slots are left today in {office?.name ?? "this office"} — its opening hours have
+            No bookable slots are left today in {office?.name ?? "this office"}; its opening hours have
             ended. Pick another date to continue.
           </Alert>
         )}
@@ -263,7 +373,7 @@ export default function SearchPage() {
 
       {visibleResult && (
         <>
-          <div className="grid grid--4">
+          <div className="metrics-panel">
             <div className="stat">
               <div className="stat__label">Office</div>
               <div className="stat__value" style={{ fontSize: "1.15rem" }}>
@@ -340,7 +450,13 @@ export default function SearchPage() {
                       disabled={!space.available || bookingId === space.id}
                       onClick={() => handleBook(space)}
                     >
-                      {bookingId === space.id ? "Booking…" : space.available ? "Book this space" : "Not available"}
+                      {bookingId === space.id
+                        ? "Booking…"
+                        : space.available
+                          ? repeat
+                            ? "Book series"
+                            : "Book this space"
+                          : "Not available"}
                     </button>
                   </div>
                 </article>
@@ -361,6 +477,20 @@ export default function SearchPage() {
       <p className="muted">
         Looking for something you already booked? See <Link to="/bookings">my bookings</Link>.
       </p>
+
+      <ConfirmDialog
+        open={Boolean(pendingSeries)}
+        title="Create recurring bookings"
+        message={
+          pendingSeries
+            ? `Book ${pendingSeries.name} from ${windowFrom} to ${windowTo} on the selected weekdays until ${formatDayKey(repeatEnd)}? Each day is booked separately; conflicts on some dates will be reported without cancelling the others.`
+            : ""
+        }
+        confirmLabel="Create series"
+        cancelLabel="Cancel"
+        onCancel={() => setPendingSeries(null)}
+        onConfirm={confirmSeries}
+      />
     </div>
   );
 }

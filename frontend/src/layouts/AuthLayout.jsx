@@ -21,7 +21,7 @@ export default function AuthLayout() {
           <p>Book desks and meeting rooms across Islamabad, Riyadh and Copenhagen in a few clicks.</p>
           <ul className="auth__points">
             <li><MapPin aria-hidden="true" /> Three offices, one booking portal</li>
-            <li><Clock aria-hidden="true" /> Real-time availability in office-local time</li>
+            <li><Clock aria-hidden="true" /> Live availability updates in office-local time</li>
             <li><CalendarCheck aria-hidden="true" /> No more double-booked meeting rooms</li>
           </ul>
         </div>

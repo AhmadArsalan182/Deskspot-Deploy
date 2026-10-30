@@ -12,13 +12,29 @@ import prisma from "../lib/prisma.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { collectBookingViolations, isValidInstant, minutesBetween } from "../domain/bookingRules.js";
 import { serializeBooking } from "../domain/serializers.js";
-import { SLOT_MINUTES } from "../domain/constants.js";
+import { ROOM_BUFFER_MINUTES, SLOT_MINUTES } from "../domain/constants.js";
 import {
   endOfLocalDayUtc,
+  localDateTimeToUtc,
   localDayKey,
   startOfLocalDayUtc,
 } from "../lib/timezone.js";
 import { paginationMeta, parsePagination } from "../lib/pagination.js";
+import { AppError } from "../lib/errors.js";
+import { expandRecurringDates } from "../domain/recurringPattern.js";
+import { publishAvailabilityChange } from "./availabilityHub.js";
+
+/** Widen a room booking window by the turnaround buffer on both sides. */
+function roomClashWindow(spaceType, startUtc, endUtc) {
+  if (spaceType !== "ROOM" || ROOM_BUFFER_MINUTES <= 0) {
+    return { clashStart: startUtc, clashEnd: endUtc };
+  }
+  const padMs = ROOM_BUFFER_MINUTES * 60 * 1000;
+  return {
+    clashStart: new Date(startUtc.getTime() - padMs),
+    clashEnd: new Date(endUtc.getTime() + padMs),
+  };
+}
 
 const bookingInclude = {
   space: { include: { office: true } },
@@ -91,17 +107,23 @@ export async function createBooking({ actor, spaceId, startUtc, endUtc, attendee
         throw badRequest(violations[0].code, violations[0].message, violations);
       }
 
+      const { clashStart, clashEnd } = roomClashWindow(space.type, startUtc, endUtc);
       const clash = await tx.booking.findFirst({
         where: {
           spaceId,
           status: "ACTIVE",
-          startUtc: { lt: endUtc },
-          endUtc: { gt: startUtc },
+          startUtc: { lt: clashEnd },
+          endUtc: { gt: clashStart },
         },
         select: { id: true },
       });
       if (clash) {
-        throw conflict("BOOKING_CONFLICT", "This space is already booked for part of that time.");
+        throw conflict(
+          "BOOKING_CONFLICT",
+          space.type === "ROOM"
+            ? `This room needs a ${ROOM_BUFFER_MINUTES}-minute gap between bookings.`
+            : "This space is already booked for part of that time.",
+        );
       }
 
       const created = await tx.booking.create({
@@ -118,6 +140,7 @@ export async function createBooking({ actor, spaceId, startUtc, endUtc, attendee
       return created;
     });
 
+    publishAvailabilityChange(space.officeId, dayKey, "booking.created");
     return serializeBooking(booking);
   } catch (error) {
     if (isOverlapConstraintError(error)) {
@@ -175,7 +198,93 @@ export async function cancelBooking({ actor, bookingId, reason, nowUtc = new Dat
     return updated;
   });
 
+  const officeId = cancelled.space.officeId;
+  const dayKey = localDayKey(cancelled.startUtc, cancelled.space.office.timezone);
+  publishAvailabilityChange(officeId, dayKey, "booking.cancelled");
   return serializeBooking(cancelled);
+}
+
+/**
+ * Create one booking per expanded date. Partial failures are reported per date
+ * rather than rolling the whole series back.
+ */
+export async function createRecurringBookings({
+  actor,
+  spaceId,
+  from,
+  to,
+  attendees = 1,
+  startDate,
+  endDate,
+  count,
+  weekdays,
+  nowUtc = new Date(),
+}) {
+  const space = await prisma.space.findUnique({
+    where: { id: spaceId },
+    include: { office: true },
+  });
+  if (!space) throw notFound("Space not found.");
+
+  const dates = expandRecurringDates({
+    startDate,
+    endDate,
+    count,
+    weekdays,
+    timeZone: space.office.timezone,
+    nowUtc,
+  });
+  if (dates.length === 0) {
+    throw badRequest(
+      "EMPTY_SERIES",
+      "No dates matched that recurrence within the 14-day booking horizon.",
+    );
+  }
+
+  const results = [];
+  for (const date of dates) {
+    const startUtc = localDateTimeToUtc(date, from, space.office.timezone);
+    const endUtc = localDateTimeToUtc(date, to, space.office.timezone);
+    if (!startUtc || !endUtc) {
+      results.push({
+        date,
+        ok: false,
+        error: { code: "INVALID_DATE", message: "Could not resolve that local date and time." },
+      });
+      continue;
+    }
+    try {
+      const booking = await createBooking({
+        actor,
+        spaceId,
+        startUtc,
+        endUtc,
+        attendees,
+        nowUtc,
+      });
+      results.push({ date, ok: true, booking });
+    } catch (error) {
+      if (error instanceof AppError) {
+        results.push({
+          date,
+          ok: false,
+          error: { code: error.code, message: error.message },
+        });
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  return {
+    spaceId,
+    from,
+    to,
+    requested: dates.length,
+    created: results.filter((row) => row.ok).length,
+    failed: results.filter((row) => !row.ok).length,
+    results,
+  };
 }
 
 export async function listMyBookings({ actor, scope = "all", page, pageSize }) {

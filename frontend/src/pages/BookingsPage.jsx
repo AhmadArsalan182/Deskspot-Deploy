@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { CalendarDays, MapPin } from "lucide-react";
 import Alert from "../components/Alert.jsx";
 import BookingStatusBadge from "../components/BookingStatusBadge.jsx";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SpaceTypeBadge from "../components/SpaceTypeBadge.jsx";
@@ -20,6 +21,7 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState(null);
+  const [pendingCancel, setPendingCancel] = useState(null);
   const [message, setMessage] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -45,8 +47,14 @@ export default function BookingsPage() {
     };
   }, [scope, reloadToken]);
 
-  async function handleCancel(booking) {
-    if (!window.confirm(`Cancel your booking for ${booking.space.name} on ${formatDayKey(booking.date)}?`)) return;
+  function requestCancel(booking) {
+    setPendingCancel(booking);
+  }
+
+  async function confirmCancel() {
+    const booking = pendingCancel;
+    if (!booking) return;
+    setPendingCancel(null);
     setCancellingId(booking.id);
     setMessage(null);
     try {
@@ -139,12 +147,12 @@ export default function BookingsPage() {
                         type="button"
                         className="btn btn--danger btn--sm"
                         disabled={cancellingId === booking.id}
-                        onClick={() => handleCancel(booking)}
+                        onClick={() => requestCancel(booking)}
                       >
                         {cancellingId === booking.id ? "Cancelling…" : "Cancel"}
                       </button>
                     ) : (
-                      <span className="cell-muted">—</span>
+                      <span className="cell-muted">-</span>
                     )}
                   </td>
                 </tr>
@@ -153,6 +161,21 @@ export default function BookingsPage() {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingCancel)}
+        title="Cancel booking"
+        message={
+          pendingCancel
+            ? `Cancel your booking for ${pendingCancel.space.name} on ${formatDayKey(pendingCancel.date)}?`
+            : ""
+        }
+        confirmLabel="Cancel booking"
+        cancelLabel="Keep booking"
+        danger
+        onCancel={() => setPendingCancel(null)}
+        onConfirm={confirmCancel}
+      />
     </div>
   );
 }

@@ -13,6 +13,12 @@ export const MAX_ADVANCE_DAYS = 14;
 /** An employee may hold at most this many ACTIVE desk bookings per office-local day. */
 export const MAX_ACTIVE_DESK_BOOKINGS_PER_DAY = 2;
 
+/**
+ * Meeting rooms keep a turnaround gap after each booking so the next group does
+ * not collide at the doorway. Desks are unaffected.
+ */
+export const ROOM_BUFFER_MINUTES = 15;
+
 /** Default page size for paginated list endpoints. */
 export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 100;

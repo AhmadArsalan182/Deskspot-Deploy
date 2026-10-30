@@ -11,6 +11,7 @@ import {
   startOfLocalDayUtc,
 } from "../lib/timezone.js";
 import { isSlotAligned, isWithinOfficeHours } from "../domain/bookingRules.js";
+import { ROOM_BUFFER_MINUTES } from "../domain/constants.js";
 
 function normalizeTime(value, fallback) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -81,13 +82,15 @@ export async function findAvailableSpaces({ officeId, date, from, to, type, incl
     bySpace.set(booking.spaceId, list);
   }
 
+  const bufferMs = ROOM_BUFFER_MINUTES * 60 * 1000;
   const results = spaces.map((space) => {
     const busy = bySpace.get(space.id) ?? [];
-    const isFreeForWindow = !busy.some(
-      (slot) =>
-        new Date(slot.startUtc).getTime() < endUtc.getTime() &&
-        startUtc.getTime() < new Date(slot.endUtc).getTime(),
-    );
+    const pad = space.type === "ROOM" ? bufferMs : 0;
+    const isFreeForWindow = !busy.some((slot) => {
+      const busyStart = new Date(slot.startUtc).getTime() - pad;
+      const busyEnd = new Date(slot.endUtc).getTime() + pad;
+      return busyStart < endUtc.getTime() && startUtc.getTime() < busyEnd;
+    });
     return { ...serializeSpace(space), available: isFreeForWindow, busy };
   });
 

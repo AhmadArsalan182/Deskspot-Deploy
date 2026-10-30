@@ -5,6 +5,19 @@ export { ApiError };
 
 const API_ROOT = String(import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
+if (import.meta.env.PROD && !API_ROOT) {
+  // Surfaced once so a misconfigured Vercel deploy fails loudly instead of
+  // posting to the SPA origin (which has no /api routes).
+  console.error(
+    "VITE_API_URL is not set. On Vercel, set it to your Render API origin (no trailing slash) and redeploy.",
+  );
+}
+
+/** Public API origin used by fetch and EventSource. Empty means same-origin /api. */
+export function getApiRoot() {
+  return API_ROOT;
+}
+
 /**
  * Thin fetch wrapper around the DeskSpot API.
  *
@@ -18,6 +31,13 @@ export async function apiRequest(path, { method = "GET", body, signal } = {}) {
   const headers = {};
   if (body) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
+
+  if (import.meta.env.PROD && !API_ROOT) {
+    throw new ApiError(
+      "This site is not connected to the API. Set VITE_API_URL on Vercel to your Render URL and redeploy.",
+      { code: "API_URL_MISSING" },
+    );
+  }
 
   try {
     response = await fetch(`${API_ROOT}/api${path}`, {

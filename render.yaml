@@ -25,3 +25,5 @@ services:
         sync: false
       - key: FRONTEND_ORIGIN
         sync: false
+      - key: ADMIN_INVITE_CODE
+        sync: false

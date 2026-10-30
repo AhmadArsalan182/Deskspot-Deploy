@@ -17,6 +17,19 @@ function parseOrigins(value) {
     .filter(Boolean);
 }
 
+function readAdminInviteCode() {
+  const code = process.env.ADMIN_INVITE_CODE || "DESKSPOT-ADMIN";
+  if (
+    process.env.NODE_ENV === "production"
+    && (!process.env.ADMIN_INVITE_CODE || code === "DESKSPOT-ADMIN")
+  ) {
+    throw new Error(
+      "ADMIN_INVITE_CODE must be set to a non-default value in production.",
+    );
+  }
+  return code;
+}
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || "development",
   host: process.env.HOST || "0.0.0.0",
@@ -28,7 +41,7 @@ export const config = {
   cookieName: "deskspot_token",
   // Admins are never created through the public sign-up form unless the caller
   // also supplies this shared invite code. Change it per environment.
-  adminInviteCode: process.env.ADMIN_INVITE_CODE || "DESKSPOT-ADMIN",
+  adminInviteCode: readAdminInviteCode(),
   // When no mail transport is configured the reset token is returned in the
   // response so a reviewer can complete the flow locally. Production must wire
   // a real email sender and leave this false.

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { LayoutGrid } from "lucide-react";
 import Alert from "../components/Alert.jsx";
 import BookingStatusBadge from "../components/BookingStatusBadge.jsx";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SpaceTypeBadge from "../components/SpaceTypeBadge.jsx";
@@ -18,6 +19,7 @@ export default function AdminOccupancyPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [pendingCancel, setPendingCancel] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -56,9 +58,14 @@ export default function AdminOccupancyPage() {
     };
   }, [officeId, date, reloadToken]);
 
-  async function handleCancel(booking) {
-    const reason = window.prompt(`Reason for cancelling the booking for ${booking.space.name}? (required)`);
-    if (reason === null) return;
+  function requestCancel(booking) {
+    setPendingCancel(booking);
+  }
+
+  async function confirmCancel(reason) {
+    const booking = pendingCancel;
+    if (!booking) return;
+    setPendingCancel(null);
     setMessage(null);
     try {
       await cancelBooking(booking.id, reason);
@@ -118,7 +125,7 @@ export default function AdminOccupancyPage() {
 
       {!loading && data && (
         <>
-          <div className="grid grid--4">
+          <div className="metrics-panel">
             <div className="stat">
               <div className="stat__label">Office</div>
               <div className="stat__value" style={{ fontSize: "1.15rem" }}>{data.office.name}</div>
@@ -224,7 +231,7 @@ export default function AdminOccupancyPage() {
                                   <button
                                     type="button"
                                     className="btn btn--danger btn--sm"
-                                    onClick={() => handleCancel(booking)}
+                                    onClick={() => requestCancel(booking)}
                                   >
                                     Cancel
                                   </button>
@@ -244,6 +251,24 @@ export default function AdminOccupancyPage() {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingCancel)}
+        title="Cancel booking"
+        message={
+          pendingCancel
+            ? `Cancel the booking for ${pendingCancel.space.name}? The employee will be notified with your reason.`
+            : ""
+        }
+        confirmLabel="Cancel booking"
+        cancelLabel="Keep booking"
+        danger
+        requireReason
+        reasonLabel="Cancellation reason"
+        reasonPlaceholder="Explain why this booking is being cancelled"
+        onCancel={() => setPendingCancel(null)}
+        onConfirm={confirmCancel}
+      />
     </div>
   );
 }
